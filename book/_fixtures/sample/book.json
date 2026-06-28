@@ -1,0 +1,23 @@
+{
+  "slug": "sample",
+  "title": "樣本書",
+  "author": "測試",
+  "lang": "zh",
+  "convert": "none",
+  "strip_media": true,
+  "strip_credits": true,
+  "strip_editor_notes": false,
+  "names_tsv": null,
+  "tts": {
+    "mode": "dual",
+    "narration": "zh-TW-HsiaoChenNeural",
+    "dialogue": "zh-CN-XiaoyiNeural",
+    "rate": "+10%",
+    "format": {
+      "bitrate": "32k",
+      "channels": 1,
+      "sample_rate": 24000
+    },
+    "gap_ms": 250
+  }
+}

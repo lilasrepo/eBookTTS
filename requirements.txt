@@ -1,0 +1,8 @@
+# biblio engine runtime deps. Build .md = opencc only (offline). Audiobook adds edge-tts + mutagen.
+# System binary (not pip): ffmpeg must be on PATH for the `tts` command.
+opencc            # Simplified->Traditional (s2tw/s2twp). PyPI 'opencc' or 'opencc-python-reimplemented'; both expose `import opencc`.
+edge-tts          # free neural TTS (audiobook); needs network
+mutagen           # mp3 ID3 tags (audiobook)
+# Optional, only if you enable those ingest formats (stubs raise until installed):
+#   PyMuPDF        # .pdf adapter
+#   python-docx    # .docx adapter

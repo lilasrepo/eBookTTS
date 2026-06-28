@@ -1,0 +1,24 @@
+# --- generated outputs (always regenerable from source + control/, can be large) ---
+book/*/out/
+book/*/build/
+book/*/audiobook/
+
+# --- input blobs: source novels are large + copyrighted; the repo tracks the ENGINE +
+#     curation (control/), config (book.json) and docs, NOT the book content itself ---
+book/*/source/
+src/
+# _audit/ holds copyrighted groundtruth prose; byte-identity is now
+# guarded by book/_regress/golden.json (hashes), so the full text need not be tracked.
+book/_audit/
+
+# --- python / scratch ---
+__pycache__/
+*.pyc
+*.part
+*.tmp
+
+# keep tracked (do NOT ignore): scripts/, book/*/book.json, book/*/control/, *.md docs,
+# .claude/skills/, requirements.txt
+
+# fixture build artifacts (regenerated; can embed absolute paths)
+book/_fixtures/*/build/
