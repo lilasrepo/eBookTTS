@@ -118,6 +118,7 @@ BOOK_JSON = {
     "title": "樣本書",
     "author": "測試",
     "lang": "zh",
+    "source_type": "legacy",
     "convert": "none",
     "strip_media": True,
     "strip_credits": True,
@@ -139,17 +140,19 @@ _EPOCH = (1980, 1, 1, 0, 0, 0)   # fixed zip timestamp -> deterministic epub byt
                                  # modified after every regen / regress run)
 
 
-def _zi(name, stored=False):
+def _zi(name):
+    # STORED, not DEFLATED: deflate bytes depend on the zlib build (Python 3.14 ships zlib-ng),
+    # so a compressed fixture would differ per interpreter. mimetype must be STORED anyway.
     zi = zipfile.ZipInfo(name, date_time=_EPOCH)
-    zi.compress_type = zipfile.ZIP_STORED if stored else zipfile.ZIP_DEFLATED
+    zi.compress_type = zipfile.ZIP_STORED
     return zi
 
 
 def write_epub():
     os.makedirs(SRC_DIR, exist_ok=True)
-    with zipfile.ZipFile(EPUB_PATH, "w", zipfile.ZIP_DEFLATED) as z:
+    with zipfile.ZipFile(EPUB_PATH, "w", zipfile.ZIP_STORED) as z:
         # mimetype MUST be first and STORED with no extra field.
-        z.writestr(_zi("mimetype", stored=True), "application/epub+zip")
+        z.writestr(_zi("mimetype"), "application/epub+zip")
         z.writestr(_zi("META-INF/container.xml"), CONTAINER)
         z.writestr(_zi("OEBPS/content.opf"), OPF)
         z.writestr(_zi("OEBPS/nav.xhtml"), NAV)

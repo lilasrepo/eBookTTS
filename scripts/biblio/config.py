@@ -7,13 +7,14 @@ A book dir holds an optional ``book.json``; missing keys fall back to DEFAULTS.
 import copy
 import json
 import os
+import sys
 
 DEFAULTS = {
     "slug": None,
     "title": None,
     "author": None,
     "lang": "zh",
-    "source_type": None,         # web | published | None(=legacy 1:1). See ARCHITECTURE.md §3
+    "source_type": None,         # web | published | legacy | None(unset=legacy 1:1, warns). See ARCHITECTURE.md §3
     "output_unit": "卷",         # 卷 | 話 (web only). published is always 卷
     "convert": "s2twp",          # one of: s2twp | s2tw | none
     "strip_media": True,
@@ -23,6 +24,7 @@ DEFAULTS = {
     "names_tsv": None,           # path RELATIVE to book_dir, or None
     "jp_patches": None,          # REL path to jp_patches.tsv (jp\tzh), applied BEFORE OpenCC. None=off
     "name_syllables": None,      # REL path to name_syllables.tsv, homophone repair AFTER names. None=off
+    "source_overrides": {},      # basename(src) -> partial cfg override for that source only. None=off
     "tts": {
         "mode": "dual",
         "narration": "zh-TW-HsiaoChenNeural",
@@ -45,6 +47,21 @@ def _deep_merge(base, over):
     return out
 
 
+def _warn_unknown_keys(jpath, user):
+    """Warn (stderr) about book.json keys not in DEFAULTS -- cheap typo protection.
+    Never fails: unknown keys are still merged, they just do nothing downstream."""
+    unknown = sorted(k for k in user if k not in DEFAULTS)
+    if unknown:
+        print("[config] WARNING %s: unknown key(s) ignored: %s"
+              % (jpath, ", ".join(unknown)), file=sys.stderr)
+    tt = user.get("tts")
+    if isinstance(tt, dict):
+        unk = sorted(k for k in tt if k not in DEFAULTS["tts"])
+        if unk:
+            print("[config] WARNING %s: unknown tts key(s) ignored: %s"
+                  % (jpath, ", ".join(unk)), file=sys.stderr)
+
+
 def load_book_config(book_dir):
     """Load <book_dir>/book.json merged over DEFAULTS.
 
@@ -59,6 +76,7 @@ def load_book_config(book_dir):
     if os.path.exists(jpath):
         with open(jpath, encoding="utf-8") as fh:
             user = json.load(fh)
+        _warn_unknown_keys(jpath, user)
         cfg = _deep_merge(cfg, user)
     cfg["book_dir"] = book_dir
     if not cfg.get("slug"):

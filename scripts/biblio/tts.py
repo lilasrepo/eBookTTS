@@ -170,7 +170,7 @@ async def _synth(seg, sem, retries=6):
             if attempt < retries:
                 await asyncio.sleep(delay + random.uniform(0, 1.0))
                 delay = min(delay * 2, 60)
-        return ("fail", "%s :: %s" % (out, last))
+        return ("fail", (seg, last))     # seg (not just out): caller needs voice+text to log it
 
 
 def _concat(parts, out_path, enc):
@@ -248,9 +248,12 @@ async def _run(cfg, only_source, only_chapter):
               (vp["stem"], len(vp["chapters"]), len(all_segs), tts.get("mode", "dual")))
         tasks = [asyncio.create_task(_synth(s, sem)) for s in all_segs]
         done = {"ok": 0, "skip": 0, "fail": 0}
+        failed = []
         for fut in asyncio.as_completed(tasks):
-            status, _info = await fut
+            status, info = await fut
             done[status] += 1
+            if status == "fail":
+                failed.append(info)
         chap_mp3s, total = [], 0.0
         for ch in vp["chapters"]:
             parts = _chapter_parts(ch["segs"], sil)
@@ -260,6 +263,16 @@ async def _run(cfg, only_source, only_chapter):
             _tag(ch["mp3"], ch["title"], vp["stem"], ch["idx"], artist)
             d = _duration(ch["mp3"]); total += d; chap_mp3s.append(ch["mp3"])
         print("    %d chapter mp3 | %.1f min | synth %s" % (len(chap_mp3s), total / 60.0, done))
+        if failed:
+            # a dropped fragment is usually benign (isolated JP kana the zh dialogue voice
+            # cannot speak) but MUST be shown: the counter alone leaves no way to tell a
+            # stray kana from a lost sentence. Format mirrors audiobook/_logs/dropped_fragments.txt.
+            owner = {s["out"]: ch for ch in vp["chapters"] for s in ch["segs"]}
+            print("    %d dropped fragment(s) -- verify each is benign:" % len(failed))
+            for seg, why in failed:
+                ch = owner.get(seg["out"], {})
+                print("      c%03d (%s)  voice=%s  text=%r  :: %s"
+                      % (ch.get("idx", 0), ch.get("title", "?"), seg["voice"], seg["text"][:60], why))
         manifest["volumes"].append({"name": vp["stem"], "chapters": len(chap_mp3s),
                                     "minutes": round(total / 60.0, 1)})
     return manifest

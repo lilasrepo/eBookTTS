@@ -1,8 +1,24 @@
 # biblio engine runtime deps. Build .md = opencc only (offline). Audiobook adds edge-tts + mutagen.
-# System binary (not pip): ffmpeg must be on PATH for the `tts` command.
-opencc            # Simplified->Traditional (s2tw/s2twp). PyPI 'opencc' or 'opencc-python-reimplemented'; both expose `import opencc`.
-edge-tts          # free neural TTS (audiobook); needs network
-mutagen           # mp3 ID3 tags (audiobook)
+# System binary (not pip): ffmpeg (with libmp3lame) must be on PATH for the `tts` command.
+#
+# Versions are PINNED: golden.json (the regress byte-compare gate) depends on the exact OpenCC
+# conversion. Tested on Python 3.13.x and 3.14.x / Windows 11. After any env rebuild run
+#   python -X utf8 scripts/biblio_cli.py doctor
+# and then scripts/regress.py -- byte drift means the OpenCC install does not match golden.
+#
+# OpenCC here is a MERGED two-package install; BOTH are load-bearing:
+#   - OpenCC==1.3.1                       the compiled converter that produces golden bytes
+#                                         (1.4.x drifts -> regress FAIL); ships opencc/clib/.
+#   - opencc-python-reimplemented==0.1.7  supplies opencc/dictionary/TSCharacters.txt, which
+#                                         verify's Simplified-marker precision reads; missing it,
+#                                         markers inflate and regress FAILs.
+# INSTALL ORDER MATTERS (a plain `pip install -r` may merge them the wrong way). Use the two
+# ordered steps in README.md (Install section): reimplemented FIRST, then OpenCC, so opencc/__init__.py stays the
+# compiled 1.3.1 while the dictionary/ folder from reimplemented remains. `doctor` verifies both.
+OpenCC==1.3.1
+opencc-python-reimplemented==0.1.7
+edge-tts>=7.2.8          # free neural TTS (audiobook); floor only -- MS endpoint churn needs upgrades; not under golden
+mutagen==1.47.0          # mp3 ID3 tags (audiobook)
 # Optional, only if you enable those ingest formats (stubs raise until installed):
-#   PyMuPDF        # .pdf adapter
-#   python-docx    # .docx adapter
+#   PyMuPDF              # .pdf adapter
+#   python-docx          # .docx adapter

@@ -17,11 +17,8 @@ description: >
 - 要重跑某卷、補掉段、換聲音 / 語速 / 位元率。
 - (還沒有 `out/*.md` → 先用 `ebook_load` 整理。)
 
-## 成本(重要)
-**跑有聲書幾乎不吃 token。** edge-tts(微軟免費神經語音 API)與 ffmpeg 都是**本機/雲端免費運算**,0 LLM token;只有 Claude 在旁監看回報耗少量對話 token。成本是**時間 + 磁碟**,不是 token。一卷雙聲約數千段、數分鐘合成、~80MB(mp3 32k)。
-
 ## 環境
-`pip install edge-tts mutagen` + 系統 `ffmpeg` 在 PATH。**TTS 需連網**(edge-tts 呼叫微軟)。Windows 主控台 `python -X utf8`。暫存放專案內(`audiobook/_work`、`_sil`、`_logs`),勿放 AppData。
+依賴照 README.md「安裝」(`edge-tts>=7.2.8`、`mutagen==1.47.0`),**裝套件前先問使用者**;另需系統 `ffmpeg` 在 PATH。**TTS 需連網**(edge-tts 呼叫微軟,0 LLM token)。一卷雙聲約數分鐘合成、~80MB(mp3 32k)。Windows 主控台 `python -X utf8`。暫存放專案內(`audiobook/_work` 段快取,含 `_work/_sil` 靜音;`audiobook/_logs`),勿放 AppData。
 
 ---
 
@@ -45,22 +42,23 @@ description: >
    - `gap_ms`:同聲連續段落間插入的靜音(ffmpeg anullsrc),250ms 自然。
    - ID3:`TPE1`(演出者)**只署 `book.json` 的 author**,絕不含漢化/製作組。
 
-3. **先驗一卷**(CLAUDE.md「先驗證再全批」):
+3. **先驗一卷,過了才跑全批**:
    ```bash
    python -X utf8 scripts/biblio_cli.py tts book/<slug> --source "<某卷檔名片段>"
    ```
-   檢查:章數對、檔名 `NNN_章名.mp3`、ID3 演出者正確、`synth {ok, skip, fail}` 的 fail 數。
+   檢查:章數對、檔名 `NNN_章名.mp3`、ID3 演出者正確、`synth {ok, skip, fail}` 的 fail 數。把檢查結果回報使用者,**等使用者說 go 才跑全批**。
 
-4. **全批**(會自動 skip 已存在的 mp3、可續跑):
+4. **全批**:
    ```bash
    python -X utf8 scripts/biblio_cli.py tts book/<slug>
    ```
-   建議用背景執行 + 逐卷回報。輸出 `audiobook/<卷名>/NNN_章名.mp3`。
+   只有段層級可續跑(段 mp3 已在 `_work` 就不重合成)。每次執行都會對所選卷的每章重新 concat、重寫 ID3、覆蓋章 mp3;已完成的卷要用 `--source` 排除(若 `_work` 已刪 → 整卷重新合成)。建議用背景執行 + 逐卷回報。輸出 `audiobook/<卷名>/NNN_章名.mp3`。
 
-5. **清理**:確認無誤後刪暫存,只留分章 mp3:
+5. **清理**:僅在 fail=0,或每個掉段都已記入 `audiobook/_logs/dropped_fragments.txt` 並判定良性後,先問使用者,同意才刪暫存(只刪 `_work`,含 `_sil`),只留分章 mp3:
    ```bash
-   rm -rf book/<slug>/audiobook/_work book/<slug>/audiobook/_sil
+   rm -rf book/<slug>/audiobook/_work
    ```
+   刪了 `_work` 後再重跑該卷 = 整卷重新合成。
 
 ---
 
@@ -68,7 +66,7 @@ description: >
 
 `synth` 報 `fail: N` **不代表章壞掉**:引擎遇失敗段會**跳過該段、仍把整章組起來**(章 mp3 完整可播)。
 
-- **重跑該卷**(skip-existing,只重試失敗段):`tts ... --source "<卷>"`。仍 fail → 不是網路問題,是**內容**。
+- **重跑該卷**(skip-existing,只重試失敗段;需 `_work` 仍在):`tts ... --source "<卷>"`。仍 fail → 不是網路問題,是**內容**。
 - **定位失敗段文字**(用引擎的 `_plan_volume` 比對磁碟 mp3),確認性質:
   - 最常見 = **對白裡夾的孤立日文假名**(`の`/`ぬ`/`だもんで`),中文對話聲念不出單一假名 → edge-tts 回 "No audio",**正確跳過,0 中文遺失**。
   - 把這類掉段記到 `audiobook/_logs/dropped_fragments.txt`(清單 + 性質)交付時說明。

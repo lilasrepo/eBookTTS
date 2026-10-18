@@ -14,6 +14,19 @@ from . import textconv
 _HEAD_RE = re.compile(r"(?m)^#\s+\S")
 
 
+def _marker_contexts(text, limit=5):
+    """First `limit` Simplified-marker hits as (char, lineno, snippet) for diagnostics.
+    Points a human/LLM at WHERE the leak is, not just which chars (see SKILL.md 流程 B)."""
+    out = []
+    for lineno, line in enumerate(text.splitlines(), start=1):
+        for i, c in enumerate(line):
+            if textconv._is_simplified_char(c):
+                out.append((c, lineno, line[max(0, i - 12):i + 13].strip()))
+                if len(out) >= limit:
+                    return out
+    return out
+
+
 def verify_book(book_dir):
     book_dir = os.path.abspath(book_dir)
     mpath = os.path.join(book_dir, "build", "manifest.json")
@@ -52,6 +65,7 @@ def verify_book(book_dir):
             row["ok"] = False
             chars_seen = "".join(sorted(textconv.list_simplified_markers(text)))
             row["notes"].append("%d Simplified markers (%s)" % (markers, chars_seen))
+            row["marker_context"] = _marker_contexts(text)
             issues.append("%s: %d Simplified markers" % (e["id"], markers))
         # ARCHITECTURE §7: 章數 drop guard -- compare disk headings to the count build actually
         # EMITTED (inner.headings), not the chapter count: a title-less chapter (epigraph page)
@@ -101,7 +115,10 @@ def print_report(rep):
         print("  %s%-22s | %5s 章 | %8s chars | SimpMark %-3s | resid %-4s | %s%s"
               % (flag, r["id"], r.get("headings", "?"), r.get("chars", "?"),
                  r.get("markers", "?"), r.get("residual", "?"), r["out"], extra))
+        for c, lineno, snippet in r.get("marker_context", []):
+            print("        L%-6d '%s'  …%s…" % (lineno, c, snippet))
     if rep["issues"]:
         print("  ISSUES:")
         for i in rep["issues"]:
             print("    - " + i)
+        print("  hint: 症狀→旋鈕診斷表 -> .claude/skills/ebook_load/SKILL.md (流程 B)")

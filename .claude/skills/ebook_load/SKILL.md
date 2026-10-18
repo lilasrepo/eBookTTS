@@ -22,7 +22,7 @@ description: >
 - (整理好的 `.md` 要轉有聲書 → 改用 `ebook_tts`。)
 
 ## 環境
-`pip install opencc edge-tts mutagen` + 系統 `ffmpeg` 在 PATH。Windows 主控台一律 `python -X utf8`,檔案 UTF-8。建 `.md` 全離線、0 token。
+安裝照 README.md「安裝」的兩步 OpenCC 順序(裝錯順序 regress 會全紅);裝完先跑 `python -X utf8 scripts/biblio_cli.py doctor`。檔案 UTF-8。建 `.md` 全離線、0 token。`build`/`verify` 若報 OpenCC 版本與 pin 不符 → 環境錯了：照 README.md「安裝」修好再跑 doctor;**別加 `--allow-drift`**(只在刻意換 OpenCC 版本並 `regress.py --freeze` 時用)。
 
 ---
 
@@ -38,7 +38,7 @@ description: >
    | **網路**(N 話=1 卷) | + volumes.tsv | + volumes.tsv 全套 |
 
    最小 `book.json`:`{"slug":"...","title":"...","author":"...","source_type":"published","output_unit":"卷","convert":"s2tw"}`。
-   - `source_type`: `published`(發行)| `web`(網路連載)。
+   - `source_type`: `published`(發行)| `web`(網路連載)| `legacy`(舊式 1:1,stem 命名;未設=legacy 但 build 會警告)。
    - `output_unit`: `卷` | `話`(web 才有意義;published 固定卷)。
    - `convert`: **官方繁中譯本即使乾淨也建議 `s2tw`** —— OCR 常夾帶零星簡體,而 OpenCC 無法區分台版異體字與真簡體,故無可靠的「只修簡體」自動法;`s2tw` 把簡體**降到近乎零**(代價:異體字正規化 台→臺)。**注意:不是零** —— OpenCC 詞優先,少數字會在詞境保留(有的正確,如「佣金」佣≠傭;有的邊界,如人名「杰特」、「涌上心頭」台版多作 傑/湧),`verify` 的 Simplified-markers 會把這幾顆標出來給人瞄一眼(每卷 0–1 顆)。要逐字保留官方用字才用 `none`(但殘留更多)。簡中漢化源用 `s2twp`。
    - 髒源再開:`"strip_tl":true`(去漢化組署名/譯註)、`"names_tsv":"control/names.tsv"`、`"jp_patches":"control/jp_patches.tsv"`、`"name_syllables":"control/name_syllables.tsv"`。
@@ -80,7 +80,7 @@ build ─► verify ─► 讀報告
 | 簡轉繁斷詞誤轉(如 `第N卷发售`→`捲髮售`) | OpenCC 詞優先選錯字 | 加進 `textconv._POSTFIX_RULES`(**務必 context-bound**,別誤傷合法詞如「捲髮」) |
 | 人名不一致 / 音譯多寫法 | 缺字典或字典不全 | 走**流程 C**(人名字典):建/補 `control/names.tsv`;同音變體 → `name_syllables.tsv` |
 | 漢化組署名/譯註殘留 | 髒源 | 開 `strip_tl:true`;個案行 → 調 `strip_credit_lines` 規則 |
-| 殘留日文整句 | 漢化漏譯 | `scan_japanese`/`extract_jp` 抽句 → 你譯成 `jp_patches.tsv`(metadata 研究,非改內文) |
+| 殘留日文整句 | 漢化漏譯 | 抽殘日句 → 你譯成 `jp_patches.tsv`(metadata 研究,非改內文)。抽句工具 `scan_japanese`/`extract_jp` **目前未提供通用版**(待移植);暫以搜尋/肉眼抽句 |
 
 **迭代守則:**
 - **改引擎規則(adapter/postfix/strip)前後必跑 `regress.py`** —— 確認沒弄壞其他已交付書(逐位元比 golden)。這是迴圈的安全閘。
@@ -107,12 +107,12 @@ build ─► verify ─► 讀報告
    - 寫 `control/names.tsv`,表頭 + 每列 `katakana⇥romaji⇥official⇥variants`(前兩欄可留空或填 zh;引擎只用 official 與 variants 逗號清單,長鍵優先單次替換)。
 3. **不確定就落 `control/name_gaps.md`**(出處衝突、沒把握、同音歧義),列出選項給人裁定 —— **絕不編造**。
 4. `book.json` 設 `"names_tsv":"control/names.tsv"` → `build` → `verify`。人改完 `name_gaps.md`/`names.tsv` 後重跑(免費)。
-5.(髒源加值)同音/拆名變體 → `control/name_syllables.tsv`(`official⇥g1|g2|…`,每群是該音節可互換字,如 `愛蜜莉雅⇥愛艾|蜜米密|莉|雅婭亞`)→ 開 `name_syllables`。殘留日文句 → `scan_japanese`/`extract_jp` 抽句 → 你翻成 `control/jp_patches.tsv`(`jp⇥zh`)→ 開 `jp_patches`。
+5.(髒源加值)同音/拆名變體 → `control/name_syllables.tsv`(`official⇥g1|g2|…`,每群是該音節可互換字,如 `愛蜜莉雅⇥愛艾|蜜米密|莉|雅婭亞`)→ 開 `name_syllables`。殘留日文句 → 抽句(`scan_japanese`/`extract_jp` **目前未提供通用版**,待移植)→ 你翻成 `control/jp_patches.tsv`(`jp⇥zh`)→ 開 `jp_patches`。
 
 ---
 
 ## 鎖定規則 / 常見坑
-- **改引擎前後必跑回歸 gate**:`python -X utf8 scripts/regress.py` —— 全建+全驗+逐位元比對 `book/_regress/golden.json`,**必須全 PASS**;只有刻意改輸出時才 `--freeze` 重凍基線。加新書進回歸 = 加進 `regress.py` 的 `BOOKS` 後 `--freeze` 一次。
+- **改引擎前後必跑回歸 gate**:`python -X utf8 scripts/regress.py` —— 全建+全驗+逐位元比對 `book/_regress/golden.json`,**必須全 PASS**;只有刻意改輸出時才 `--freeze` 重凍基線。新書放進 `book/` 會被 `regress.py` 自動納入,`--freeze` 一次即可。
 - **管線順序不可調換**(build.py):`strip_media → jp_patch(轉換前) → OpenCC → strip_credit_lines(一律) → strip_tl(轉換後) → strip_editor_notes → apply_names → repair_names`。
 - **版權/製作資訊處理是自動的,不是旋鈕**:epub **一律**丟版權/staff/製作資訊整頁(adapter 層,含免責聲明/disclaimer 整章),`strip_credit_lines` **一律**清章內殘留的漢化署名行(以 圖源:/錄入:/掃圖:/譯者: 等開頭),**保留作者/插畫**。高精準行錨定 → 不誤殺正文。要全套清漢化署名/promo/譯註/URL 才另開 `strip_tl`(較廣,乾淨源勿開)。
 - **簡轉繁斷詞誤轉**:`textconv._postfix` 已修常見個案(`第N卷发售`→誤`捲髮售`→`卷發售`),且**嚴格保護**合法詞(「捲髮」不誤傷)。讀到新誤轉個案 → 加進 `_POSTFIX_RULES`(務必 context-bound)。
@@ -124,5 +124,4 @@ build ─► verify ─► 讀報告
 - [README.md](../../../README.md) — 完整流程、共通性 2×2、token 地圖、回歸 gate
 - [ARCHITECTURE.md](../../../ARCHITECTURE.md) — Piece / plan / manifest / control 檔 schema(架構 + I/O 契約)
 - [book/README.md](../../../book/README.md) — book.json 全旋鈕、控制檔格式
-- [book/re-zero/control/](../../../book/re-zero/control/) — web+卷 全套控制檔的活範本(volumes.tsv / names.tsv / jp_patches.tsv)
 - **有聲書**:整理好的 `.md` → 用 skill `ebook_tts`

@@ -6,14 +6,19 @@
 
 ## 安裝
 ```bash
-pip install -r requirements.txt        # opencc + edge-tts + mutagen
-# 另需系統 ffmpeg 在 PATH(僅 tts 用)。Windows 主控台一律 python -X utf8。
+# OpenCC 是兩個套件合併安裝,順序有關(都寫進 opencc/);別直接 pip install -r requirements.txt,可能合錯而輸出漂移
+python -m pip install opencc-python-reimplemented==0.1.7   # 先裝(提供 TSCharacters.txt)
+python -m pip install OpenCC==1.3.1                        # 後裝(產生 golden 位元的轉換器)
+python -m pip install "edge-tts>=7.2.8" mutagen==1.47.0    # 僅 tts 需要
+python -X utf8 scripts/biblio_cli.py doctor                # 自檢:版本/opencc 字典/ffmpeg
+# 另需系統 ffmpeg 在 PATH(僅 tts 用)。
 ```
+> Windows 上若 `python` 指到別的環境(或不存在),改用 `py -X utf8`;doctor 會印出實際使用的 interpreter 路徑。
 
 ## 完整流程
 
 ```
-階段 0  環境(一次)  pip install -r requirements.txt + ffmpeg
+階段 0  環境(一次)  依上方「安裝」 + ffmpeg(僅 tts)
 階段 1  加書         ① source/ 放料  ② 寫 book.json(source_type/output_unit/convert)
                      ③ (web+卷)寫 control/volumes.tsv:話→卷
 階段 2  人名字典      只有「髒源/漢化」需要;唯一花 LLM token 的步驟 —— 見「流程 B」
@@ -67,7 +72,7 @@ python -X utf8 scripts/regress.py --freeze   # 故意改了輸出時,重凍 gold
 
 ## 倉庫結構
 ```
-scripts/biblio/        引擎:ingest(epub/md/txt;pdf/docx stub)/ textconv / plan / build / verify / tts
+scripts/biblio/        引擎:ingest(epub/md 可用;txt/pdf/docx stub)/ textconv / plan / build / verify / tts
   prep/                控制檔輔助:extract_name_candidates.py(人名候選工作表)
 scripts/biblio_cli.py  CLI:build / verify / tts
 scripts/regress.py     回歸 gate:全建+全驗+逐位元比 golden(book/_regress/golden.json)

@@ -6,10 +6,12 @@ source_type/output_unit drive the unit and naming:
   web       + 卷 : control/volumes.tsv groups 話 -> 卷 (explicit id or Vol-NN)
   web       + 話 : 1 source file = 1 話 (auto, H-NNNN)
   published + 話 : INVALID (published has no 話) -> ValueError
-  (source_type unset) : LEGACY 1:1 -- output stem = source filename (back-compat for
-                        books predating the contract, e.g. the sample fixture).
+  "legacy" (or unset) : LEGACY 1:1 -- output stem = source filename (back-compat for
+                        books predating the contract, e.g. the sample fixture). Unset
+                        warns; set "legacy" explicitly to silence.
 """
 import os
+import sys
 from dataclasses import dataclass, field
 
 
@@ -88,6 +90,10 @@ def plan(book_dir, cfg, sources):
     st = cfg.get("source_type")
     ou = cfg.get("output_unit", "卷")
     if st is None:
+        print("[plan] WARNING: source_type unset -> legacy 1:1 stem naming; "
+              'set "published"/"web" (or "legacy" to silence)', file=sys.stderr)
+        return _plan_legacy(sources)
+    if st == "legacy":
         return _plan_legacy(sources)
     if st == "published":
         if ou == "話":
@@ -100,4 +106,4 @@ def plan(book_dir, cfg, sources):
         if ou == "話":
             return _plan_web_episodes(sources)
         raise ValueError("web output_unit must be 卷 or 話, got %r" % (ou,))
-    raise ValueError("unknown source_type %r (expect 'web' or 'published')" % (st,))
+    raise ValueError("unknown source_type %r (expect 'web', 'published', or 'legacy')" % (st,))

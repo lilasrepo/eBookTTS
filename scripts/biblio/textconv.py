@@ -7,8 +7,21 @@ true passthrough and is never routed through an OpenCC instance.
 """
 import os
 import re
+import sys
 
 _CC_CACHE = {}
+_WARNED_TSV = set()   # paths already warned about, so a per-chapter loader warns once
+
+
+def _warn_dropped_rows(path, linenos, kind):
+    """Warn (stderr, once per path) that malformed TSV rows were silently skipped."""
+    if not linenos or path in _WARNED_TSV:
+        return
+    _WARNED_TSV.add(path)
+    shown = ", ".join(str(n) for n in linenos[:5])
+    more = " (+%d more)" % (len(linenos) - 5) if len(linenos) > 5 else ""
+    print("[textconv] WARNING %s: skipped %d malformed %s row(s) at line(s) %s%s"
+          % (path, len(linenos), kind, shown, more), file=sys.stderr)
 
 
 # Surgical fixes for OpenCC word-segmentation mis-picks that occur AFTER s2twp/s2tw.
@@ -34,6 +47,52 @@ def _postfix(text):
     return text
 
 
+_ALLOW_DRIFT = False
+_VER_CHECKED = False
+
+
+def set_allow_drift(flag=True):
+    """--allow-drift: downgrade the OpenCC pin-mismatch guard from error to WARN."""
+    global _ALLOW_DRIFT
+    _ALLOW_DRIFT = bool(flag)
+
+
+def _check_opencc_version(opencc):
+    """One-time per process: installed OpenCC must equal the requirements.txt pin (golden bytes)."""
+    global _VER_CHECKED
+    if _VER_CHECKED:
+        return
+    from .doctor import _req_pin   # lazy: doctor imports textconv lazily too, no cycle
+    pin = _req_pin("OpenCC")
+    ver = str(getattr(opencc, "__version__", "?"))
+    if pin is None:
+        print("[textconv] WARN: OpenCC pin not found in requirements.txt; version check skipped",
+              file=sys.stderr)
+    elif ver != pin:
+        msg = ("OpenCC %s != requirements pin %s (interpreter %s): output would drift from golden. "
+               "Fix the env per README.md (Install section), then run: python -X utf8 scripts/biblio_cli.py doctor. "
+               "To proceed knowingly (e.g. before regress.py --freeze), pass --allow-drift."
+               % (ver, pin, sys.executable))
+        if not _ALLOW_DRIFT:
+            raise RuntimeError(msg)
+        print("[textconv] WARN: --allow-drift: " + msg, file=sys.stderr)
+    _VER_CHECKED = True
+
+
+def preflight():
+    """Run the version guard up front (build/verify always construct OpenCC later, e.g. for the
+    residual count, so fail before the first piece is written rather than midway)."""
+    import opencc
+    _check_opencc_version(opencc)
+
+
+def _new_cc(mode):
+    """Single OpenCC construction path (version-guarded)."""
+    import opencc
+    _check_opencc_version(opencc)
+    return opencc.OpenCC(mode)
+
+
 def opencc_convert(text, mode):
     """Simplified->Traditional. mode: s2twp | s2tw | none(passthrough).
 
@@ -45,8 +104,7 @@ def opencc_convert(text, mode):
         raise ValueError("unsupported convert mode: %r" % (mode,))
     cc = _CC_CACHE.get(mode)
     if cc is None:
-        import opencc
-        cc = opencc.OpenCC(mode)
+        cc = _new_cc(mode)
         _CC_CACHE[mode] = cc
     return _postfix(cc.convert(text))
 
@@ -59,8 +117,7 @@ def count_residual_simplified(text):
     """
     cc = _CC_CACHE.get("s2tw")
     if cc is None:
-        import opencc
-        cc = opencc.OpenCC("s2tw")
+        cc = _new_cc("s2tw")
         _CC_CACHE["s2tw"] = cc
     conv = cc.convert(text)
     return sum(1 for a, b in zip(text, conv) if a != b and "一" <= a <= "鿿")
@@ -87,17 +144,21 @@ _SIMP_DECISION = {}
 def _cc(mode):
     cc = _CC_CACHE.get(mode)
     if cc is None:
-        import opencc
-        cc = opencc.OpenCC(mode)
+        cc = _new_cc(mode)
         _CC_CACHE[mode] = cc
     return cc
 
 
 def _ts_keys():
-    """Set of Traditional chars (keys of OpenCC TSCharacters.txt); empty if unavailable."""
+    """Set of Traditional chars (keys of OpenCC TSCharacters.txt); empty if unavailable.
+
+    An empty set is NOT silent: it degrades Simplified-marker precision (every char the
+    s2t dict changes then counts as Simplified), so we warn loudly. The dict ships only
+    with opencc-python-reimplemented -- see README.md (Install section) / requirements.txt.
+    """
     global _TS_KEYS
     if _TS_KEYS is None:
-        _TS_KEYS = set()
+        keys = set()
         try:
             import opencc
             p = os.path.join(os.path.dirname(opencc.__file__), "dictionary", "TSCharacters.txt")
@@ -105,9 +166,12 @@ def _ts_keys():
                 for line in fh:
                     line = line.strip()
                     if line:
-                        _TS_KEYS.add(line.split("\t")[0])
-        except Exception:
-            _TS_KEYS = set()
+                        keys.add(line.split("\t")[0])
+        except Exception as e:
+            print("[textconv] WARNING: OpenCC TSCharacters.txt not found -- Simplified-marker "
+                  "precision degraded (install opencc-python-reimplemented; see README.md Install section). [%s]"
+                  % e, file=sys.stderr)
+        _TS_KEYS = keys
     return _TS_KEYS
 
 
@@ -173,20 +237,21 @@ def _load_names(names_tsv_path):
         return mapping
     with open(names_tsv_path, encoding="utf-8") as fh:
         lines = fh.read().splitlines()
-    for line in lines[1:]:
+    dropped = []
+    for n, line in enumerate(lines[1:], start=2):
         if not line.strip():
             continue
         cols = line.split("\t")
-        if len(cols) < 3:
+        if len(cols) < 3 or not cols[2].strip():
+            dropped.append(n)
             continue
         official = cols[2].strip()
-        if not official:
-            continue
         variants = cols[3] if len(cols) > 3 else ""
         keys = [official] + [v.strip() for v in variants.split(",")]
         for k in keys:
             if k and len(k) >= 2:
                 mapping.setdefault(k, official)
+    _warn_dropped_rows(names_tsv_path, dropped, "names")
     return mapping
 
 
@@ -215,12 +280,20 @@ def _load_jp_patches(path):
     pats = []
     if not path or not os.path.exists(path):
         return pats
+    dropped = []
     with open(path, encoding="utf-8") as fh:
-        for line in fh.read().splitlines()[1:]:
-            if "\t" in line:
-                jp, zh = line.split("\t", 1)
-                if jp and zh and jp != zh:
-                    pats.append((jp, zh))
+        for n, line in enumerate(fh.read().splitlines()[1:], start=2):
+            if not line.strip():
+                continue
+            if "\t" not in line:
+                dropped.append(n)
+                continue
+            jp, zh = line.split("\t", 1)
+            if jp and zh and jp != zh:
+                pats.append((jp, zh))
+            else:
+                dropped.append(n)
+    _warn_dropped_rows(path, dropped, "jp_patches")
     return sorted(pats, key=lambda kv: -len(kv[0]))
 
 
@@ -313,15 +386,22 @@ def _load_name_syllables(path):
     table = {}
     if not path or not os.path.exists(path):
         return table
+    dropped = []
     with open(path, encoding="utf-8") as fh:
-        for line in fh.read().splitlines()[1:]:
+        for n, line in enumerate(fh.read().splitlines()[1:], start=2):
+            if not line.strip():
+                continue
             cols = line.split("\t")
             if len(cols) < 2:
+                dropped.append(n)
                 continue
             official = cols[0].strip()
             groups = [list(g) for g in cols[1].strip().split("|") if g]
             if official and groups:
                 table[official] = groups
+            else:
+                dropped.append(n)
+    _warn_dropped_rows(path, dropped, "name_syllables")
     return table
 
 

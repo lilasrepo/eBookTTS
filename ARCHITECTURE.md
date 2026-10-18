@@ -27,7 +27,7 @@ book/<slug>/
 ## 3. book.json 兩個一等欄位
 | key | 值 | 說明 |
 |---|---|---|
-| `source_type` | `web` \| `published` | 網路連載 / 發行單行本 |
+| `source_type` | `web` \| `published` \| `legacy` | 網路連載 / 發行單行本 / 舊式 1:1(未設=legacy,build 會警告) |
 | `output_unit` | `卷` \| `話` | 輸出粒度 |
 
 合法組合:
@@ -37,6 +37,7 @@ book/<slug>/
 | `web` | `卷` | `control/volumes.tsv`(話→卷 分組) | 一卷一檔 |
 | `web` | `話` | 每個話檔 = 1 話(自動) | 一話一檔 |
 | `published` | `話` | — | **無效,build 報錯** |
+| `legacy`(或未設) | — | 1 source 檔 = 1 卷(stem 命名) | 一檔一卷,back-compat;未設會警告 |
 
 ## 4. Piece(輸出單位抽象,取代卷偏的 VolumeSpec)
 ```
@@ -68,7 +69,7 @@ Piece
 ## 7. Manifest:build/manifest.json(雙層 + 出處 + 設定快照)
 ```json
 {
-  "slug": "re-zero",
+  "slug": "my-book",
   "source_type": "web", "output_unit": "卷",
   "config": { "convert": "s2twp", "strip_tl": true, "...": "解析後 cfg 快照" },
   "pieces": [

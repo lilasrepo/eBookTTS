@@ -6,12 +6,12 @@
 ```
 book/<slug>/
   book.json          # 設定(唯一的旋鈕)
-  source/            # 原始檔:*.epub / *.md / *.txt(也可散放在 <slug>/ 根目錄)
+  source/            # 原始檔:*.epub / *.md(也可散放在 <slug>/ 根目錄)
   control/           # 可選:人名字典 / 卷界 / 日文補丁 / 同音表
   out/               # 輸出 .md(build 產生)
   audiobook/         # 輸出 mp3(tts 產生)
 ```
-支援格式:`.epub`(stdlib 手解)、`.md`、`.txt`。`.pdf` / `.docx` 是 stub(要先裝 PyMuPDF / python-docx,會提示)。
+支援格式:`.epub`(stdlib 手解)、`.md`。`.txt` / `.pdf` / `.docx` / git 目錄是 stub(txt 尚未接線;pdf/docx 要先裝 PyMuPDF / python-docx,會提示)。
 每個 source 檔 → 一個 `out/<檔名>.md`(epub 內的章 = `# 標題` 區塊)。
 
 ## 2. 最小 dry run(乾淨的繁中/簡中 epub)
@@ -62,4 +62,4 @@ ingest 解析(epub 一律丟版權/製作資訊整頁) → strip_media? → jp_p
 - 抽看首尾段落。
 
 ## 7. 環境
-`pip install opencc edge-tts mutagen` + 系統裝 `ffmpeg`(在 PATH)。建 `.md` 全程離線;TTS 需連網(edge-tts)。Windows 主控台一律 `python -X utf8`。
+依賴安裝見 [README.md](../README.md)「安裝」+ 系統裝 `ffmpeg`(在 PATH)。建 `.md` 全程離線;TTS 需連網(edge-tts)。Windows 主控台一律 `python -X utf8`。

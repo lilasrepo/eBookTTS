@@ -21,7 +21,7 @@ import os
 import re
 import sys
 
-from .config import load_book_config
+from .config import load_book_config, _deep_merge
 from .ingest import adapter_for, list_sources
 from . import textconv
 from .plan import plan
@@ -153,26 +153,33 @@ def _build_piece(piece, cfg, parse_cache):
     """Build one Piece -> (out_text, manifest_entry). Merges all its fragments in order."""
     book_dir = cfg["book_dir"]
     web_volume = cfg.get("source_type") == "web" and piece.kind == "卷"
+    overrides = cfg.get("source_overrides") or {}
 
     blocks = []
     chapter_count = 0
     frag_rel = []
     convert_modes = set()
+    override_note = None
     for src, sel in piece.fragments:
         doc = _parse_source(src, parse_cache)
-        convert_mode = _detect_convert_mode(cfg, doc.meta)
+        over = overrides.get(os.path.basename(src))
+        src_cfg = _deep_merge(cfg, over) if over else cfg
+        if over and override_note is None and over.get("note"):
+            override_note = over.get("note")
+        convert_mode = _detect_convert_mode(src_cfg, doc.meta)
         convert_modes.add(convert_mode)
         chapters = _select_chapters(doc, sel)
         for ch in chapters:
-            block = _render_chapter(ch, convert_mode, cfg)
+            block = _render_chapter(ch, convert_mode, src_cfg)
             if block.strip():
                 blocks.append(block)
         chapter_count += len(chapters)
         frag_rel.append(os.path.relpath(src, book_dir).replace("\\", "/"))
 
     out_text = "\n\n".join(blocks)
-    if piece.note:                          # volume-level note (e.g. WEB 後續) as a blockquote
-        out_text = "> " + piece.note.strip() + "\n\n" + out_text
+    note = piece.note or override_note        # volume-level note (e.g. WEB 後續 or a source override) as a blockquote
+    if note:
+        out_text = "> " + note.strip() + "\n\n" + out_text
     if out_text and not out_text.endswith("\n"):
         out_text += "\n"
 
@@ -229,13 +236,27 @@ def build_book(book_dir, only_source=None):
         seen_out[name] = piece.id
         entries.append(_build_piece(piece, cfg, parse_cache))
 
+    # Ingest transparency: what the epub heuristics dropped / which title source each
+    # kept chapter used, per source. Lets a human/LLM eyeball a NEW book's parse without
+    # re-running the adapter. Only epub sources report this; md/txt have no meta["ingest"].
+    ingest = {}
+    for src, doc in parse_cache.items():
+        rep = (doc.meta or {}).get("ingest")
+        if rep and (rep.get("dropped") or any(rep.get("title_sources", {}).values())):
+            rel = os.path.relpath(src, cfg["book_dir"]).replace("\\", "/")
+            ingest[rel] = rep
+    n_dropped = sum(len(r["dropped"]) for r in ingest.values())
+    if n_dropped:
+        print('[build] ingest: dropped %d page(s) across %d source(s) -- see build/manifest.json "ingest"'
+              % (n_dropped, len(ingest)))
+
     manifest = {
         "slug": cfg["slug"],
         "source_type": cfg.get("source_type"),
         "output_unit": cfg.get("output_unit", "卷"),
         "config": {k: cfg.get(k) for k in _CONFIG_KEYS},
-        "book_dir": cfg["book_dir"],
         "pieces": entries,
+        "ingest": ingest,
         "totals": {
             "pieces": len(entries),
             "inner_units": sum(e["inner"]["count"] for e in entries),

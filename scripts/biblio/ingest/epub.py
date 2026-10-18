@@ -23,11 +23,31 @@ NEVER hardcode a prefix -- match on local-name via ln(); for namespaced attrs
 import html
 import posixpath
 import re
+import sys
 import zipfile
 from urllib.parse import unquote
 import xml.etree.ElementTree as ET
 
 from .base import Adapter, Chapter, Document
+
+# Chapter XHTML is decoded utf-8/errors=replace; a high density of U+FFFD in the KEPT
+# body means the source was not really UTF-8 and we would emit mojibake. Checked on the
+# extracted text of chapters we actually keep (not dropped cover/credits pages), so a
+# discarded junk page never aborts the build. Warn on any; fail loud past this ratio.
+_MOJIBAKE_MAX_RATIO = 0.005
+
+
+def _check_mojibake(text, key):
+    n = text.count("�")
+    if not n:
+        return
+    ratio = n / max(1, len(text))
+    if ratio > _MOJIBAKE_MAX_RATIO:
+        raise ValueError("epub chapter %s: %d U+FFFD replacement char(s) (%.2f%% of %d) -- "
+                         "source is not valid UTF-8" % (key, n, ratio * 100, len(text)))
+    sys.stderr.write("[epub] WARNING %s: %d U+FFFD replacement char(s) in kept chapter text\n"
+                     % (key, n))
+
 
 # Title-level credit/staff markers (Traditional + Simplified variants). The adapter
 # tests the ORIGINAL (pre-conversion) title, so Simplified forms must be listed too.
@@ -189,14 +209,6 @@ def _regex_h_titles(raw):
     return out
 
 
-def detect_simplified_lang(language):
-    """True if a dc:language value indicates Simplified Chinese (force s2twp)."""
-    if not language:
-        return False
-    low = language.strip().lower()
-    return low.startswith("zh-cn") or low.startswith("zh-hans") or low == "zh_cn"
-
-
 def _is_credits(title, body, strip_credits):
     """Decide whether a chapter is a credits/staff/copyright page."""
     if not strip_credits:
@@ -206,6 +218,52 @@ def _is_credits(title, body, strip_credits):
     if body and len(body) <= _CREDIT_BLURB_MAXLEN and _CREDIT_BLURB_RE.search(body):
         return True
     return False
+
+
+# Front-matter pages (cover / TOC / back-cover blurb) that ship a REAL nav-ncx TOC title
+# and so never reach the weak first-line junk guard below. Commercial epubs list them in
+# the TOC exactly like chapters; they are unreadable as audio (a cover page is the title
+# one glyph per line, a TOC is a bare chapter list).
+# The LENGTH CAP is the real safety net -- a genuine chapter runs thousands of chars, so a
+# title match alone can never drop content. Anchored ^...$ so a chapter merely CONTAINING
+# one of these words (e.g. '目錄之外的那一天') is untouched.
+_FRONTMATTER_TITLE_RE = re.compile(
+    r"^(標題|标题|目錄|目录|contents?|簡介|简介|內容簡介|内容简介|封面|扉頁|扉页)$",
+    re.IGNORECASE,
+)
+_FRONTMATTER_MAXLEN = 600
+
+
+# A cover/title page carries the title, the volume number and the author/illustrator
+# credit lines -- nothing else. Detected by SHAPE, not by title: the printed cover title
+# rarely equals dc:title (a fan-repack may ship a dc:title with a volume suffix and a
+# repack credit, while its cover page reads just the plain book title). ALL THREE
+# conditions are required.
+#
+# The role marker MUST be anchored to its own LINE: on a cover it is a standalone label
+# ('插畫' / 'author.' on one line, the name on the next). Matching it anywhere in the body
+# dropped a real 小劇場 skit whose dialogue happened to mention 「卷頭插畫還有…」 -- the
+# characters discuss their own book, so these words DO occur mid-sentence in prose.
+_COVER_ROLE_RE = re.compile(
+    r"^\s*(author\s*\.?|illust(?:ration)?\s*\.?|插畫|插画|繪師|绘师|イラスト)\s*$",
+    re.IGNORECASE | re.MULTILINE,
+)
+
+
+def _is_cover_page(body):
+    return (len(body) <= _FRONTMATTER_MAXLEN
+            and not _has_prose_run(body)
+            and bool(_COVER_ROLE_RE.search(body)))
+
+
+def _is_frontmatter(title, body):
+    """Cover / TOC / blurb page legitimised by a nav TOC title. Short-body gated."""
+    body = body or ""
+    if len(body) > _FRONTMATTER_MAXLEN:
+        return False
+    if title and _FRONTMATTER_TITLE_RE.match(_collapse_ws(title)):
+        return True
+    return _is_cover_page(body)
 
 
 # Front-matter / junk-heading detection. ONLY consulted when a spine doc has NO nav-TOC
@@ -282,6 +340,8 @@ class EpubAdapter(Adapter):
 
             # STEP 5-8 -- per spine doc -> chapter
             chapters = []
+            ingest = {"dropped": [],
+                      "title_sources": {"nav": 0, "h1": 0, "first_line": 0, "suppressed": 0}}
             for idref, linear in spine:
                 m = manifest.get(idref)
                 if not m or not m.get("href"):
@@ -300,6 +360,8 @@ class EpubAdapter(Adapter):
                 text, h_titles = _xhtml_to_text(raw)
                 # STEP 7 -- skip image-only / empty (no speakable text)
                 if not text or not _SPEAKABLE_RE.search(text):
+                    ingest["dropped"].append({"key": doc_key, "why": "empty-or-image",
+                                              "hint": _first_line(text)[:40]})
                     continue
                 # STEP 6 -- title resolution + front-matter/junk-heading guard.
                 # nav/ncx TOC and <h1>/<h2> are trusted. Only the weak first-line fallback
@@ -308,9 +370,9 @@ class EpubAdapter(Adapter):
                 nav_title = toc_title.get(doc_key)
                 h1 = self._h1_title(h_titles)
                 if nav_title:
-                    title = nav_title
+                    title, title_src = nav_title, "nav"
                 elif h1:
-                    title = h1
+                    title, title_src = h1, "h1"
                 else:
                     first = _first_line(text)
                     # Drop a cover / scene-divider / caption page: junk first-line title AND
@@ -320,14 +382,28 @@ class EpubAdapter(Adapter):
                     # are intentionally NOT used here, so legit long fallback titles (some books
                     # 小劇場 skits) keep their headings -> those books stay byte-identical.
                     if _is_junk_title(first) and not _has_prose_run(text):
+                        ingest["dropped"].append({"key": doc_key, "why": "junk-front-matter",
+                                                  "hint": first[:40]})
                         continue
-                    title = "" if _nontitle_first_line(first) else first[:60]
+                    if _nontitle_first_line(first):
+                        title, title_src = "", "suppressed"
+                    else:
+                        title, title_src = first[:60], "first_line"
                 # STEP 8 -- strip credits/staff/copyright
                 if _is_credits(title, text, strip_credits=True):
+                    ingest["dropped"].append({"key": doc_key, "why": "credits",
+                                              "hint": (title or _first_line(text))[:40]})
                     continue
+                if _is_frontmatter(title, text):
+                    ingest["dropped"].append({"key": doc_key, "why": "front-matter",
+                                              "hint": title[:40]})
+                    continue
+                _check_mojibake(text, doc_key)   # only on kept chapters (shipped content)
+                ingest["title_sources"][title_src] += 1
                 chapters.append(Chapter(title=title, body=text))
 
         # STEP 9 -- assemble
+        meta["ingest"] = ingest
         return Document(title=meta.get("title") or "", chapters=chapters, meta=meta)
 
     # ---- STEP 1 ----

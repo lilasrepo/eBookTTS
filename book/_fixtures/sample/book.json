@@ -3,6 +3,7 @@
   "title": "樣本書",
   "author": "測試",
   "lang": "zh",
+  "source_type": "legacy",
   "convert": "none",
   "strip_media": true,
   "strip_credits": true,
