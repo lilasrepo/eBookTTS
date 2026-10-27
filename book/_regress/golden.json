@@ -1,0 +1,14 @@
+{
+  "sample": {
+    "files": {
+      "sample.md": "8d50dad68dd1187f513d9c3850fbd1d09cb3f531b243cc99ab41a143ec2b6fd3"
+    },
+    "verify": {
+      "issues": 0,
+      "ok": 1,
+      "pieces": 1,
+      "residual_simplified": 0,
+      "simplified_markers": 0
+    }
+  }
+}
