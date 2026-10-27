@@ -22,7 +22,7 @@ description: >
 - (整理好的 `.md` 要轉有聲書 → 改用 `ebook_tts`。)
 
 ## 環境
-安裝照 README.md「安裝」的兩步 OpenCC 順序(裝錯順序 regress 會全紅);裝完先跑 `python -X utf8 scripts/biblio_cli.py doctor`。檔案 UTF-8。建 `.md` 全離線、0 token。`build`/`verify` 若報 OpenCC 版本與 pin 不符 → 環境錯了：照 README.md「安裝」修好再跑 doctor;**別加 `--allow-drift`**(只在刻意換 OpenCC 版本並 `regress.py --freeze` 時用)。
+安裝照 README.md「安裝」的兩步 OpenCC 順序(裝錯順序 regress 會全紅);裝完先跑 `python -X utf8 scripts/biblio_cli.py doctor`。檔案 UTF-8。建 `.md` 全離線、0 token。`build`/`verify` 若報 OpenCC 版本與 pin 不符 → 環境錯了：照 README.md「安裝」修好再跑 doctor;**別加 `--allow-drift`**(它只用來預覽別版 OpenCC 的輸出；刻意升級要先改 requirements.txt 的 pin 再 `regress.py --freeze`)。
 
 ---
 

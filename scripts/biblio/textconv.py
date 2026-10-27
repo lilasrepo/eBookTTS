@@ -37,6 +37,12 @@ _POSTFIX_RULES = [
     (re.compile(r"(第[一二三四五六七八九十百0-9]+)捲"), r"\1卷"),
     # standalone 髮售/髮行 (發售/發行 mis-pick) not caught above.
     (re.compile(r"髮(?=[售行])"), "發"),
+    # OpenCC 1.4.x s2tw mis-maps already-Traditional input (1.3.1 left these alone); none of
+    # the left-hand forms is ever correct. NOT 沖擊->衝擊: some Traditional sources print 沖擊 verbatim.
+    (re.compile(r"傢夥"), "傢伙"),
+    (re.compile(r"風採"), "風采"),
+    (re.compile(r"幹擾"), "干擾"),
+    (re.compile(r"(古|慌|傻|怪)裡(?=古怪|慌張|傻氣|怪氣)"), r"\1里"),
 ]
 
 
@@ -71,7 +77,8 @@ def _check_opencc_version(opencc):
     elif ver != pin:
         msg = ("OpenCC %s != requirements pin %s (interpreter %s): output would drift from golden. "
                "Fix the env per README.md (Install section), then run: python -X utf8 scripts/biblio_cli.py doctor. "
-               "To proceed knowingly (e.g. before regress.py --freeze), pass --allow-drift."
+               "Deliberate OpenCC upgrade: bump the pin in requirements.txt, then regress.py --freeze. "
+               "build/verify --allow-drift only previews another OpenCC's output."
                % (ver, pin, sys.executable))
         if not _ALLOW_DRIFT:
             raise RuntimeError(msg)
@@ -94,12 +101,15 @@ def _new_cc(mode):
 
 
 def opencc_convert(text, mode):
-    """Simplified->Traditional. mode: s2twp | s2tw | none(passthrough).
+    """Simplified->Traditional. mode: s2twp | s2tw | s2tw-markers | none(passthrough).
 
     none -> returns the SAME object (identity); never constructs OpenCC.
+    s2tw-markers -> for already-Traditional sources: s2tw only at real-Simplified positions.
     """
     if mode == "none" or not mode:
         return text
+    if mode == "s2tw-markers":
+        return _convert_markers(text)
     if mode not in ("s2twp", "s2tw"):
         raise ValueError("unsupported convert mode: %r" % (mode,))
     cc = _CC_CACHE.get(mode)
@@ -114,12 +124,14 @@ def count_residual_simplified(text):
     Traditional conversion. NOISY: also flags Traditional orthographic VARIANTS the publisher
     legitimately chose (台/臺, 爲/為, 只/隻, 里/裡...), so a nonzero count is NOT by itself an
     error. Use count_simplified_markers() for the real "is this Simplified?" signal.
+    _postfix (length-preserving) is applied so the metric does not count OpenCC's own known
+    mis-picks (e.g. 1.4.x turns every Traditional 傢伙 into 傢夥).
     """
     cc = _CC_CACHE.get("s2tw")
     if cc is None:
         cc = _new_cc("s2tw")
         _CC_CACHE["s2tw"] = cc
-    conv = cc.convert(text)
+    conv = _postfix(cc.convert(text))
     return sum(1 for a, b in zip(text, conv) if a != b and "一" <= a <= "鿿")
 
 
@@ -132,7 +144,7 @@ def count_residual_simplified(text):
 # also changes it AND it is not in the hand-blacklist of TW-valid variants below. markers>0
 # => real Simplified almost certainly present; markers==0 does NOT guarantee zero (rare
 # variant-confusable chars are deliberately excluded to keep precision high). To force
-# Traditional, set book.json convert to s2tw/s2twp.
+# Traditional, set book.json convert to s2tw/s2twp, or s2tw-markers (see _convert_markers).
 _SIMP_BLACKLIST = set(
     "霉准几游占抛里伙采托征郁后台斗干凶丑据岩着适种余脚筑于厘划刹踪雇咨尸栖撑奥"
     "泄痹棱胜祢虱爲污癡祕纔脣麽僞啓吁丢岳云"
@@ -200,6 +212,35 @@ def list_simplified_markers(text):
         if _is_simplified_char(c):
             out[c] = out.get(c, 0) + 1
     return out
+
+
+# s2tw-markers: for sources that are ALREADY Traditional. Plain s2tw rewrites the publisher's own
+# Traditional text (一出現->一齣現, 克制->剋制, 適合->適閤, 不准->不準, 游標->遊標; measured
+# 2026-10-22: 2,973 such positions across four Traditional-source books), so this mode keeps every char verbatim
+# except real Simplified (_is_simplified_char) plus _MARKER_EXTRA: blacklisted chars whose s2tw
+# result was right at every occurrence in those sources. 准/游/干 were checked and rejected
+# (s2tw makes 不準/遊標/幹涉). The s2tw char is taken from a whole-line conversion so OpenCC's
+# phrase context still picks e.g. 幾 vs 几 (茶几 stays).
+_MARKER_EXTRA = set("抛撑踪几")
+
+
+def _take(c):
+    return _is_simplified_char(c) or c in _MARKER_EXTRA
+
+
+def _convert_markers(text):
+    cc = _cc("s2tw")
+    out = []
+    for line in text.split("\n"):
+        if not any(_take(c) for c in line):
+            out.append(line)
+            continue
+        conv = _postfix(cc.convert(line))
+        if len(conv) == len(line):
+            out.append("".join(b if _take(a) else a for a, b in zip(line, conv)))
+        else:  # not length-preserving: fall back to per-char conversion of the taken chars
+            out.append("".join(cc.convert(c) if _take(c) else c for c in line))
+    return "\n".join(out)
 
 
 def strip_media(text):

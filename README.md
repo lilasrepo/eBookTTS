@@ -8,8 +8,8 @@
 ```bash
 # OpenCC 是兩個套件合併安裝,順序有關(都寫進 opencc/);別直接 pip install -r requirements.txt,可能合錯而輸出漂移
 python -m pip install opencc-python-reimplemented==0.1.7   # 先裝(提供 TSCharacters.txt)
-python -m pip install OpenCC==1.3.1                        # 後裝(產生 golden 位元的轉換器)
-python -m pip install "edge-tts>=7.2.8" mutagen==1.47.0    # 僅 tts 需要
+python -m pip install OpenCC==1.4.2                        # 後裝(產生 golden 位元的轉換器)
+python -m pip install "edge-tts>=7.3.1" mutagen==1.48.1    # 僅 tts 需要
 python -X utf8 scripts/biblio_cli.py doctor                # 自檢:版本/opencc 字典/ffmpeg
 # 另需系統 ffmpeg 在 PATH(僅 tts 用)。
 ```

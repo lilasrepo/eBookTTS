@@ -49,14 +49,14 @@ def run_doctor():
           % (v[0], v[1], ", ".join("%d.%d" % p for p in _VERIFIED_PY)),
           (v[0], v[1]) in _VERIFIED_PY, "not yet verified; run scripts/regress.py", fatal=False)
 
-    # OpenCC convert: version must match the golden pin (1.4.x produces different bytes).
+    # OpenCC convert: version must match the golden pin (any other version produces different bytes).
     pin = _req_pin("OpenCC")
     try:
         import opencc
         ver = str(getattr(opencc, "__version__", "?"))
         check("OpenCC %s (requirements pin %s)" % (ver, pin or "?"),
               pin is not None and ver == pin,
-              "golden frozen on %s; other builds drift -> regress FAIL" % (pin or "1.3.1"))
+              "golden frozen on %s; other builds drift -> regress FAIL" % (pin or "1.4.2"))
     except Exception as e:
         check("import opencc", False, str(e))
 

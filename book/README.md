@@ -29,12 +29,12 @@ python -X utf8 scripts/biblio_cli.py tts book/<slug>
 ```json
 { "slug": "<slug>", "title": "書名", "author": "作者", "convert": "s2twp" }
 ```
-> 簡中來源即使 `convert` 設 `none` 也會被**強制 s2twp**(輸出永不殘簡)。已是繁中的來源用 `convert:"none"` 直通。
+> 簡中來源即使 `convert` 設 `none` 也會被**強制 s2twp**(輸出永不殘簡)。已是繁中的來源用 `convert:"none"` 直通;繁中來源但夾雜簡體字,用 `s2tw-markers`。`s2tw-markers` **不看** epub 的 `dc:language`,因為這個標記不可靠(實例：某套書有 14 卷標 zh-CN,內容卻是繁中)。只用在內容確定是繁中的書,並看 verify 的 markers。
 
 ## 3. book.json 全旋鈕
 | key | 預設 | 作用 | 何時開 |
 |---|---|---|---|
-| `convert` | `s2twp` | 簡→繁:`s2twp`(台灣在地化) / `s2tw` / `none`(直通) | 簡中來源用 s2twp;繁中來源用 none |
+| `convert` | `s2twp` | 簡→繁:`s2twp`(台灣在地化) / `s2tw` / `s2tw-markers`(只轉真簡體字,其餘逐字保留) / `none`(直通) | 簡中來源用 s2twp;繁中來源用 none;繁中但夾簡體字用 s2tw-markers(整本 s2tw 會改錯原文,如 一出現→一齣現) |
 | `strip_media` | `true` | 去圖片連結 / 殘留 HTML 標記 | 一般留 true |
 | ~~`strip_credits`~~ | — | **不是旋鈕**。epub **一律**丟版權/staff/製作資訊整頁,並一律清章內殘留的漢化署名行(圖源:/錄入:/掃圖:/譯者:…,**保留作者/插畫**)。不可關 | 自動 |
 | `strip_editor_notes` | `false` | 去 `（譯註：…）` 這類括註(輕量) | 想清譯註但不想動 strip_tl 時 |

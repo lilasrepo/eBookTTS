@@ -93,7 +93,15 @@ def _diff_book(name, golden, current):
 
 
 def run(only=None, freeze=False):
-    books = [b for b in BOOKS if not only or b.split("/")[-1] in only or b in only]
+    # OpenCC pin guard up front: on a drifted env every book would FAIL one by one (and a
+    # --freeze could bless nothing), so stop once with the reason instead.
+    from biblio import textconv
+    try:
+        textconv.preflight()
+    except RuntimeError as e:
+        print("[regress] ABORT: %s" % e)
+        return 1
+    books =[b for b in BOOKS if not only or b.split("/")[-1] in only or b in only]
     golden = {}
     if os.path.exists(GOLDEN):
         with open(GOLDEN, encoding="utf-8") as fh:
@@ -124,7 +132,7 @@ def run(only=None, freeze=False):
         else:
             results.append((name, "PASS", "%d files byte-identical | markers=%s issues=%s"
                             % (len(cur["files"]), cur["verify"].get("simplified_markers"),
-                               cur["verify"].get("issues"))))
+                               cur["verify"].get("issues", "-"))))
 
     # fixture structural self-test (titles / no credits leak / golden expected.md) -- a deeper
     # check than hashing, only meaningful for the fixture; runs when the fixture is in scope.

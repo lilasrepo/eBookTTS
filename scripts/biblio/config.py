@@ -16,7 +16,7 @@ DEFAULTS = {
     "lang": "zh",
     "source_type": None,         # web | published | legacy | None(unset=legacy 1:1, warns). See ARCHITECTURE.md §3
     "output_unit": "卷",         # 卷 | 話 (web only). published is always 卷
-    "convert": "s2twp",          # one of: s2twp | s2tw | none
+    "convert": "s2twp",          # one of: s2twp | s2tw | s2tw-markers | none
     "strip_media": True,
     "strip_credits": True,
     "strip_editor_notes": False,

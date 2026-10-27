@@ -18,7 +18,7 @@ description: >
 - (還沒有 `out/*.md` → 先用 `ebook_load` 整理。)
 
 ## 環境
-依賴照 README.md「安裝」(`edge-tts>=7.2.8`、`mutagen==1.47.0`),**裝套件前先問使用者**;另需系統 `ffmpeg` 在 PATH。**TTS 需連網**(edge-tts 呼叫微軟,0 LLM token)。一卷雙聲約數分鐘合成、~80MB(mp3 32k)。Windows 主控台 `python -X utf8`。暫存放專案內(`audiobook/_work` 段快取,含 `_work/_sil` 靜音;`audiobook/_logs`),勿放 AppData。
+依賴照 README.md「安裝」(`edge-tts>=7.3.1`、`mutagen==1.48.1`),**裝套件前先問使用者**;另需系統 `ffmpeg` 在 PATH。**TTS 需連網**(edge-tts 呼叫微軟,0 LLM token)。一卷雙聲約數分鐘合成、~80MB(mp3 32k)。Windows 主控台 `python -X utf8`。暫存放專案內(`audiobook/_work` 段快取,含 `_work/_sil` 靜音;`audiobook/_logs`),勿放 AppData。
 
 ---
 

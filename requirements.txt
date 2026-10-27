@@ -7,18 +7,19 @@
 # and then scripts/regress.py -- byte drift means the OpenCC install does not match golden.
 #
 # OpenCC here is a MERGED two-package install; BOTH are load-bearing:
-#   - OpenCC==1.3.1                       the compiled converter that produces golden bytes
-#                                         (1.4.x drifts -> regress FAIL); ships opencc/clib/.
+#   - OpenCC==1.4.2                       the compiled converter that produces golden bytes
+#                                         (any other version drifts -> regress FAIL; 1.4.x s2tw
+#                                         mis-picks are patched in textconv._POSTFIX_RULES).
 #   - opencc-python-reimplemented==0.1.7  supplies opencc/dictionary/TSCharacters.txt, which
 #                                         verify's Simplified-marker precision reads; missing it,
 #                                         markers inflate and regress FAILs.
 # INSTALL ORDER MATTERS (a plain `pip install -r` may merge them the wrong way). Use the two
 # ordered steps in README.md (Install section): reimplemented FIRST, then OpenCC, so opencc/__init__.py stays the
-# compiled 1.3.1 while the dictionary/ folder from reimplemented remains. `doctor` verifies both.
-OpenCC==1.3.1
+# compiled 1.4.2 while the dictionary/ folder from reimplemented remains. `doctor` verifies both.
+OpenCC==1.4.2
 opencc-python-reimplemented==0.1.7
-edge-tts>=7.2.8          # free neural TTS (audiobook); floor only -- MS endpoint churn needs upgrades; not under golden
-mutagen==1.47.0          # mp3 ID3 tags (audiobook)
+edge-tts>=7.3.1          # free neural TTS (audiobook); floor only -- MS endpoint churn needs upgrades (7.2.8 got 403 on 2026-10-22; 7.3.0 adds Sec-MS-GEC v2); not under golden
+mutagen==1.48.1          # mp3 ID3 tags (audiobook)
 # Optional, only if you enable those ingest formats (stubs raise until installed):
 #   PyMuPDF              # .pdf adapter
 #   python-docx          # .docx adapter
